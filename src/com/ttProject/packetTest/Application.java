@@ -1,60 +1,90 @@
 package com.ttProject.packetTest;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.red5.server.adapter.ApplicationAdapter;
 import org.red5.server.api.IConnection;
 import org.red5.server.api.IScope;
-import org.red5.server.api.service.IServiceCapableConnection;
+import org.red5.server.api.Red5;
 import org.red5.server.api.stream.IBroadcastStream;
 
-import com.ttProject.packetTest.flvbyte.FlvByteCreator;
-import com.ttProject.packetTest.flvbyte.IFlvByteListener;
-
-public class Application extends ApplicationAdapter implements IFlvByteListener{
-	private IServiceCapableConnection target = null;
-	private FlvByteCreator flv = new FlvByteCreator();
+/**
+ * Red5のadapter(ルームにしか興味ないので、そっちの処理しかしていない。)
+ * @author taktod
+ */
+public class Application extends ApplicationAdapter {
+	/** ルーム */
+	private final Map<String, RoomInstance> roomMap = new HashMap<String, RoomInstance>();
+	/**
+	 * {@inheritDoc}
+	 */
 	@Override
-	public boolean appStart(IScope scope) {
-		flv.addEventListener(this);
-		return super.appStart(scope);
+	public boolean roomStart(IScope room) {
+		RoomInstance roomInstance = new RoomInstance(room);
+		roomMap.put(room.getName(), roomInstance);
+		return super.roomStart(room);
 	}
+	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void roomStop(IScope room) {
+		roomMap.remove(room.getName());
+		super.roomStop(room);
+	}
+	/**
+	 * {@inheritDoc}
+	 */
 	@Override
 	public boolean roomConnect(IConnection conn, Object[] params) {
-		if(target != null) {
-			System.out.println("target is already setted up...");
+		boolean result = super.roomConnect(conn, params);
+		if(!result) {
 			return false;
 		}
-		if(conn instanceof IServiceCapableConnection) {
-			target = (IServiceCapableConnection)conn;
-			target.invoke("flvHeader", new Object[]{flv.getHeader()}, null);
-			target.invoke("flvMetaData", new Object[]{flv.getMetaData()}, null);
-			for(byte[] data : flv.getInitialData()) {
-				target.invoke("flvMetaData", new Object[]{data}, null);
-			}
+		RoomInstance roomInstance = roomMap.get(conn.getScope().getName());
+		if(roomInstance != null) {
+			return roomInstance.connect(conn, params);
 		}
-		return super.roomConnect(conn, params);
+		return false;
 	}
+	/**
+	 * {@inheritDoc}
+	 */
 	@Override
 	public void roomDisconnect(IConnection conn) {
-		if(conn.equals(target)) {
-			target = null;
+		RoomInstance roomInstance = roomMap.get(conn.getScope().getName());
+		if(roomInstance != null) {
+			roomInstance.disconnect(conn);
 		}
 		super.roomDisconnect(conn);
 	}
 	/**
-	 * 放送を開始したとき・・・
+	 * {@inheritDoc}
 	 */
 	@Override
 	public void streamBroadcastStart(IBroadcastStream stream) {
-		stream.addStreamListener(flv);
+		super.streamBroadcastStart(stream);
+		IConnection conn = Red5.getConnectionLocal();
+		RoomInstance roomInstance = roomMap.get(stream.getScope().getName());
+		if(roomInstance != null) {
+			roomInstance.streamBroadcastStart(conn, stream);
+		}
+		else {
+			// ルーム接続でないコネクションの放送はすべて禁止
+			stream.stop();
+		}
 	}
+	/**
+	 * {@inheritDoc}
+	 */
 	@Override
 	public void streamBroadcastClose(IBroadcastStream stream) {
-		super.streamBroadcastClose(stream);
-	}
-	@Override
-	public void packetCreated(byte[] data) {
-		if(target != null) {
-			target.invoke("flvData", new Object[]{data}, null);
+		IConnection conn = Red5.getConnectionLocal();
+		RoomInstance roomInstance = roomMap.get(stream.getScope().getName());
+		if(roomInstance != null) {
+			roomInstance.streamBroadcastClose(conn, stream);
 		}
+		super.streamBroadcastClose(stream);
 	}
 }

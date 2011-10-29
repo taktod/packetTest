@@ -54,13 +54,14 @@ public class FlvByteCreator implements IStreamListener {
 	 * 放送パケットをキャプチャする動作
 	 * この２つのみ。
 	 */
-	public FlvByteCreator() {
+	public FlvByteCreator(IBroadcastStream stream) {
 		listeners = new ArrayList<IFlvByteListener>();
 		initialData = new ArrayList<byte[]>();
 		// FLVヘッダーを作成する。
 		makeFlvHeader();
 		// メタデータ仮を作成する。
 		makeMetaData();
+		stream.addStreamListener(this);
 	}
 	/**
 	 * 生成パケット監視リスナー設置
@@ -81,9 +82,8 @@ public class FlvByteCreator implements IStreamListener {
 	 */
 	private void makeFlvHeader() {
 		FLVHeader flvHeader = new FLVHeader();
-		// 音声データ、動画データは本当にながれてくるかわからないけど、とりあえずフラグ上はONにしておく。
-		flvHeader.setFlagAudio(true);
-		flvHeader.setFlagVideo(true);
+		flvHeader.setFlagAudio(audioCodecId != -1);
+		flvHeader.setFlagVideo(videoCodecId != -1);
 		IoBuffer header = IoBuffer.allocate(HEADER_LENDTH + 4);
 		flvHeader.write(header);
 		header.flip();
@@ -96,8 +96,7 @@ public class FlvByteCreator implements IStreamListener {
 	private void makeMetaData() {
 		// 初期化
 		final IoBuffer buf = IoBuffer.allocate(192);
-		buf.setAutoExpand(true);
-		final Output out = new Output(buf);
+		final Output out;
 		final ITag tag;
 		final int bodySize;
 		final byte dataType;
@@ -105,6 +104,8 @@ public class FlvByteCreator implements IStreamListener {
 		final int totalTagSize;
 		
 		// 事前情報設定
+		buf.setAutoExpand(true);
+		out = new Output(buf);
 		out.writeString("onMetaData");
 		Map<Object, Object> params = new HashMap<Object, Object>();
 		params.put("server", "ttProject flvByteCreator");
@@ -196,7 +197,12 @@ public class FlvByteCreator implements IStreamListener {
 					if(audioCodecId == CODEC_AUDIO_AAC) { // AACなら初期バイトを保持しておく
 						initialData.add(result);
 					}
+					makeFlvHeader();
 					makeMetaData();
+					// 変更を検知したので、イベントを送信する。
+					for(IFlvByteListener listener : listeners) {
+						listener.changeInitDataEvent();
+					}
 				}
 				break;
 			case ITag.TYPE_VIDEO:
@@ -207,7 +213,12 @@ public class FlvByteCreator implements IStreamListener {
 					if(videoCodecId == CODEC_VIDEO_AVC) { // H.264なら初期バイトを保持しておく
 						initialData.add(result);
 					}
+					makeFlvHeader();
 					makeMetaData();
+					// 変更を検知したので、イベントを送信する。
+					for(IFlvByteListener listener : listeners) {
+						listener.changeInitDataEvent();
+					}
 				}
 				break;
 			case ITag.TYPE_METADATA:
@@ -263,9 +274,9 @@ public class FlvByteCreator implements IStreamListener {
 			tag.setBodySize(data.limit());
 			tag.setBody(data);
 			byteData = getTagData(tag);
-			data.clear();
+			// リスナーにデータの送信を要求する。
 			for(IFlvByteListener listener : listeners) {
-				listener.packetCreated(byteData);
+				listener.packetEvent(byteData);
 			}
 		}
 		catch (Exception e) {

@@ -6,8 +6,12 @@ package com.ttProject.packetTest.flvbyte;
  */
 public interface IFlvByteListener {
 	/**
+	 * 初期データが変更されたときのイベント
+	 */
+	public void changeInitDataEvent();
+	/**
 	 * streamEventで生成されたデータイベント
 	 * @param data
 	 */
-	public void packetCreated(byte[] data);
+	public void packetEvent(byte[] data);
 }
