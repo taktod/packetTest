@@ -88,6 +88,7 @@ public class RoomInstance implements IFlvByteListener {
 	 * @param stream
 	 */
 	public void streamBroadcastClose(IConnection conn, IBroadcastStream stream) {
+		sendEndEvent();
 		broadcastConn = null;
 		// flvByteCreatorを無効化しておく。
 		flv.removeEventListener(this);
@@ -114,6 +115,12 @@ public class RoomInstance implements IFlvByteListener {
 	public void packetEvent(byte[] data) {
 		for(IServiceCapableConnection sconn : getInvokeConnections()) {
 			sconn.invoke("flvData", new Object[]{data});
+		}
+	}
+	private void sendEndEvent() {
+		log.info("send end data for all");
+		for(IServiceCapableConnection sconn : getInvokeConnections()) {
+			sconn.invoke("flvEnd");
 		}
 	}
 	/**
