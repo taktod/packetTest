@@ -49,9 +49,13 @@ public class RoomInstance implements IFlvByteListener {
 			if(conn instanceof IServiceCapableConnection) {
 				IServiceCapableConnection sconn = (IServiceCapableConnection) conn;
 				sconn.invoke("flvHeader", new Object[]{flv.getHeader()});
-				sconn.invoke("flvMetaData", new Object[]{flv.getMetaData()});
+				System.out.println("sendMetaDataNum...:" + flv.getMetaNum());
+				sconn.invoke("flvMetaNum", new Object[]{flv.getMetaNum()});
+				int metaCounter = 0;
+				sconn.invoke("flvMetaData", new Object[]{metaCounter, flv.getMetaData()});
 				for(byte[] data : flv.getInitialData()) {
-					sconn.invoke("flvMetaData", new Object[]{data});
+					metaCounter ++;
+					sconn.invoke("flvMetaData", new Object[]{metaCounter, data});
 				}
 			}
 		}
@@ -102,9 +106,12 @@ public class RoomInstance implements IFlvByteListener {
 		log.info("send initial data for all");
 		for(IServiceCapableConnection sconn : getInvokeConnections()) {
 			sconn.invoke("flvHeader", new Object[]{flv.getHeader()});
-			sconn.invoke("flvMetaData", new Object[]{flv.getMetaData()});
+			sconn.invoke("flvMetaNum", new Object[]{flv.getMetaNum()});
+			int metaCounter = 0;
+			sconn.invoke("flvMetaData", new Object[]{metaCounter, flv.getMetaData()});
 			for(byte[] data : flv.getInitialData()) {
-				sconn.invoke("flvMetaData", new Object[]{data});
+				metaCounter ++;
+				sconn.invoke("flvMetaData", new Object[]{metaCounter, data});
 			}
 		}
 	}
@@ -114,7 +121,7 @@ public class RoomInstance implements IFlvByteListener {
 	@Override
 	public void packetEvent(byte[] data) {
 		for(IServiceCapableConnection sconn : getInvokeConnections()) {
-			sconn.invoke("flvData", new Object[]{data});
+			sconn.invoke("flvData", new Object[]{flv.getFrameCounter(), data});
 		}
 	}
 	private void sendEndEvent() {

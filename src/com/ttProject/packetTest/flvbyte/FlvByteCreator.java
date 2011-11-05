@@ -48,6 +48,8 @@ public class FlvByteCreator implements IStreamListener {
 	private volatile int videoCodecId = -1;
 	/** コーデック情報(音声) */
 	private volatile int audioCodecId = -1;
+	/** 現在フレームの位置 */
+	private long frameCounter = 0;
 	/*
 	 * 方針：必要な処理は
 	 * 初期値の作成(Flvヘッダ、メタデータの作成)
@@ -81,12 +83,21 @@ public class FlvByteCreator implements IStreamListener {
 	 * ヘッダー情報を作成し保持しておく。
 	 */
 	private void makeFlvHeader() {
+		frameCounter = 0;
 		FLVHeader flvHeader = new FLVHeader();
 		flvHeader.setFlagAudio(audioCodecId != -1);
 		flvHeader.setFlagVideo(videoCodecId != -1);
 		IoBuffer header = IoBuffer.allocate(HEADER_LENDTH + 4);
 		flvHeader.write(header);
-		header.flip();
+		if(header.hasArray()) {
+			log.info("header bytebuffer has a backing array");
+			header.flip();
+		}
+		else {
+			log.info("header bytebuffer does not have a backing array");
+			byte[] tmp = new byte[HEADER_LENDTH + 4];
+			header.get(tmp);
+		}
 		this.flvHeader = header.array();
 		header.clear();
 	}
@@ -122,6 +133,7 @@ public class FlvByteCreator implements IStreamListener {
 		else {
 			params.put("noaudiocodec", 0);
 		}
+		params.put("canSeekToEnd", true);
 		out.writeMap(params, new Serializer());
 		buf.flip();
 		// Tag作成情報セットアップ
@@ -213,8 +225,11 @@ public class FlvByteCreator implements IStreamListener {
 					if(videoCodecId == CODEC_VIDEO_AVC) { // H.264なら初期バイトを保持しておく
 						initialData.add(result);
 					}
+					System.out.println("videoCodecId:" + videoCodecId);
 					makeFlvHeader();
+					System.out.println("createFlvHeader");
 					makeMetaData();
+					System.out.println("createMetaData");
 					// 変更を検知したので、イベントを送信する。
 					for(IFlvByteListener listener : listeners) {
 						listener.changeInitDataEvent();
@@ -225,6 +240,7 @@ public class FlvByteCreator implements IStreamListener {
 				initialData.add(result);
 				break;
 			}
+			frameCounter ++;
 		}
 		return result;
 	}
@@ -241,6 +257,12 @@ public class FlvByteCreator implements IStreamListener {
 	 */
 	public byte[] getMetaData() {
 		return metaData;
+	}
+	public int getMetaNum() {
+		return initialData.size() + 1;
+	}
+	public long getFrameCounter() {
+		return frameCounter;
 	}
 	/**
 	 * 初期データ応答
@@ -275,8 +297,10 @@ public class FlvByteCreator implements IStreamListener {
 			tag.setBody(data);
 			byteData = getTagData(tag);
 			// リスナーにデータの送信を要求する。
-			for(IFlvByteListener listener : listeners) {
-				listener.packetEvent(byteData);
+			if(byteData != null) {
+				for(IFlvByteListener listener : listeners) {
+					listener.packetEvent(byteData);
+				}
 			}
 		}
 		catch (Exception e) {
